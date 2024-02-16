@@ -3,6 +3,7 @@ import requests
 import os
 
 
+
 class WorldReporter:
     def __init__(self, server_url: str, folder: str, logger: Logger) -> None:
         self._server_url = server_url

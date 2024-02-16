@@ -1,8 +1,7 @@
 import cv2
-import numpy as np
 import datetime
 import uuid
-import pandas
+import numpy as np
 from ObjectDetectionModel import YOLOv8ObjDetectionModel
 import logging
 import colorlog
@@ -31,12 +30,12 @@ def create_logger():
     return logger
 
 
-def area_of_rectangle(rect):
+def area_of_rectangle(rect: list) -> int:
     x1, y1, x2, y2 = rect
     return abs(x2 - x1) * abs(y2 - y1)
 
 
-def intersection_area(rect1, rect2):
+def intersection_area(rect1: list, rect2: list) -> int:
     x1, y1, x2, y2 = rect1
     a1, b1, a2, b2 = rect2
 
@@ -51,7 +50,7 @@ def intersection_area(rect1, rect2):
     return (x_right - x_left) * (y_bottom - y_top)
 
 
-def remove_rectangles_based_on_intersections_and_area(rectangles):
+def remove_rectangles_based_on_intersections_and_area(rectangles: list) -> list:
     coef_intersection = 0.7
     n = len(rectangles)
     areas = [area_of_rectangle(rect) for rect in rectangles]
@@ -71,7 +70,7 @@ def remove_rectangles_based_on_intersections_and_area(rectangles):
     return filtered_rectangles
 
 
-def perspective_transform(img, pt_A, pt_B, pt_C, pt_D):
+def perspective_transform(img: np.array, pt_A: list, pt_B: list, pt_C: list, pt_D: list) -> np.array:
     width_AD = np.sqrt(((pt_A[0] - pt_D[0]) ** 2) + ((pt_A[1] - pt_D[1]) ** 2))
     width_BC = np.sqrt(((pt_B[0] - pt_C[0]) ** 2) + ((pt_B[1] - pt_C[1]) ** 2))
     maxWidth = max(int(width_AD), int(width_BC))
@@ -106,7 +105,6 @@ zones = extra.get("zones")
 server_url = os.environ.get("server_url")
 camera_url = os.environ.get("camera_url")
 camera_ip = os.environ.get("camera_ip")
-print(camera_url)
 folder = os.environ.get("folder")
 
 # init classes
@@ -133,10 +131,14 @@ while True:
     if status == 2:
         for zone in zones:
             # get four coordinates of zone with boxes
-            pt_A, pt_B, pt_C, pt_D = zone
+            values = list(map(int, list(zone["coords"][0].values())))
+            x1, y1, x2, y2 = values[0], values[1], values[2], values[3]
 
             # transform image to make rectangle
-            img = perspective_transform(image, pt_A, pt_B, pt_C, pt_D)
+            if len(x1) == 2:
+                img = perspective_transform(image, x1, y1, x2, y2)
+            else:
+                img = image[y1:y2, x1:x2]
 
             # make prediction
             results = model_box(img, conf=0.55)
@@ -159,7 +161,8 @@ while True:
                                   0.5, (255, 255, 255), 1)
 
             name_file = uuid.uuid4()
-
+            file_path = os.path.join(folder, f"{name_file}.jpg")
+            cv2.imwrite(file_path)
             end_track = datetime.datetime.now()
 
             # send report

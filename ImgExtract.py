@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 
 
+
 class ImageExtractor:
     def __init__(self, url: str) -> None:
         self.url = url
