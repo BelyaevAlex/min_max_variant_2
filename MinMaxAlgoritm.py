@@ -95,13 +95,16 @@ def perspective_transform(img: np.array, pt_A: list, pt_B: list, pt_C: list, pt_
 
 logg = create_logger()
 myColor = 0
+logg.info("Project was started")
+
 
 # get environments
 if os.environ.get("server_url") is None:
     load_dotenv(".env")
 extra: str = os.environ.get("extra")
 extra = json.loads(extra)[0]
-zones = extra.get("zones")
+zones = extra.get("areas")
+logg.info(f"Was founded {len(zones)} areas")
 server_url = os.environ.get("server_url")
 camera_url = os.environ.get("camera_url")
 camera_ip = os.environ.get("camera_ip")
@@ -111,28 +114,34 @@ folder = os.environ.get("folder")
 report = WorldReporter(server_url, folder, logg)
 model_box = YOLOv8ObjDetectionModel(model_path='models/box_detection_model.pt')
 model_person = YOLOv8ObjDetectionModel(model_path='models/person_detection_model.pt')
+logg.info("All env variables and models was loaded successfully")
 
 # status 0 - boxes already recounted, check for person
 # status 1 - person on image
 # status 2 - person leave, but boxes not recount. Recounting boxes
-status = 0
+status = 2
 
 while True:
+    logg.info(f"Try to load image")
     image = ImageExtractor(camera_url).get_image()
-    print(image.shape)
+    logg.info(f"Image was loaded successfully")
 
     predict_person = model_person(image, conf=0.5)
 
-    if len(predict_person.boxes.xyxy) > 0:
+    if len(predict_person.boxes.xyxy) > 0 and status == 0:
         status = 1
+        logg.info(f"Person was founded")
     elif status == 1:
         status = 2
+        logg.info(f"Person leave")
 
     if status == 2:
+        logg.info("Start recounting boxes")
+        final_report = []
         for zone in zones:
             # get four coordinates of zone with boxes
-            values = list(map(int, list(zone["coords"][0].values())))
-            x1, y1, x2, y2 = values[0], values[1], values[2], values[3]
+            values = zone["coords"][0]
+            x1, y1, x2, y2 = values["x1"], values["y1"], values["x2"], values["y2"]
 
             # transform image to make rectangle
             if len(x1) == 2:
@@ -159,6 +168,7 @@ while True:
                 img = cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
                 img = cv2.putText(img, str(prob[i].conf[0].item())[:4], (int(x1) + 4, int(y1) + 15), cv2.FONT_HERSHEY_SIMPLEX,
                                   0.5, (255, 255, 255), 1)
+            logg.info(f"In zone {zone['itemName']} was founded {len(boxes)} boxes")
 
             name_file = uuid.uuid4()
             file_path = os.path.join(folder, f"{name_file}.jpg")
@@ -166,6 +176,7 @@ while True:
             end_track = datetime.datetime.now()
 
             # send report
-            report.send_report(f'{folder}/{name_file}.jpg', str(start_track), str(end_track))
-
+            final_report.add(report.create_item_report(file_path, str(zone['itemId']), str(len(boxes))))
+        report.send_report(str(start_track), str(end_track), camera_ip, final_report)
+        logg.info(f"Boxes was recounted")
         status = 0
