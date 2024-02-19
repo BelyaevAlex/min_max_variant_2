@@ -80,7 +80,6 @@ extra: str = os.environ.get("extra")
 extra = json.loads(extra)[0]
 zones = extra.get("areas")
 logg.info(f"Was founded {len(zones)} areas")
-print(os.environ.get("extra"))
 server_url = os.environ.get("server_url")
 camera_url = os.environ.get("camera_url")
 camera_ip = os.environ.get("camera_ip")
@@ -89,7 +88,7 @@ folder = os.environ.get("folder")
 # init classes
 report = WorldReporter(server_url, folder, logg)
 model_box = YOLOv8ObjDetectionModel(model_path='models/box_detection_model.pt')
-model_person = YOLOv8ObjDetectionModel(model_path='models/person_detection_model.pt')
+model_person = YOLOv8ObjDetectionModel(model_path='models/person_detection_model.pt', classes=[0])
 image_extr = ImageExtractor(camera_url, logg)
 logg.info("All env variables and models was loaded successfully")
 
