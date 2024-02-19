@@ -28,7 +28,7 @@ class WorldReporter:
         }
         return report
 
-    def create_item_report(self, photo_path: str, itemId: str, count: str) -> dict:
+    def create_item_report(self, photo_path: str, itemId: int, count: int) -> dict:
         report = {
           'itemId': itemId,
           'count': count,

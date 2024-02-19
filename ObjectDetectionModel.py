@@ -8,7 +8,7 @@ class YOLOv8ObjDetectionModel:
         self._model = YOLO(model_path)
 
     @torch.no_grad()
-    def __call__(self, img: np.array, conf=0.5) -> list:
+    def __call__(self, img: np.array, conf=0.5):
         results = self._model.predict(
             source=img,
             conf=conf
