@@ -118,9 +118,10 @@ while True:
         for zone in zones:
             # get four coordinates of zone with boxes
             values = zone["coords"][0]
-            x1, y1, x2, y2 = int(values["x1"]), int(values["y1"]), int(values["x2"]), int(values["y2"])
+            x1_zone, y1_zone, x2_zone, y2_zone = int(values["x1"]), int(values["y1"]), int(values["x2"]), int(
+                values["y2"])
 
-            img = image[y1:y2, x1:x2]
+            img = image[y1_zone:y2_zone, x1_zone:x2_zone]
 
             # make prediction
             results = model_box(img, conf=0.55)
@@ -132,11 +133,18 @@ while True:
             # remove rectangles, which are on other rectangles
             boxes = remove_rectangles_based_on_intersections_and_area(boxes)
 
+            # draw zone on main image
+            image = cv2.rectangle(image, (x1_zone, y1_zone), (x2_zone, y2_zone), (255, 0, 255), 2)
+            img = cv2.putText(image, zone['itemName'], (int(x1_zone), int(y1_zone) - 15),
+                              cv2.FONT_HERSHEY_COMPLEX,
+                              0.5, (255, 0, 255), 1)
+
             # draw rectangles
             for i, box in enumerate(boxes):
                 x1, y1, x2, y2 = list(box)
                 label = 0
-                img = cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+                img = cv2.rectangle(img, (int(x1 + x1_zone), int(y1 + y1_zone)), (int(x2 + x2_zone), int(y2 + y2_zone)),
+                                    (0, 255, 0), 2)
                 img = cv2.putText(img, str(prob[i].conf[0].item())[:4], (int(x1) + 4, int(y1) + 15),
                                   cv2.FONT_HERSHEY_SIMPLEX,
                                   0.5, (255, 255, 255), 1)
