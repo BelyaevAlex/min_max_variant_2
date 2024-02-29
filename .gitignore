@@ -10,6 +10,8 @@ main2.py
 main.py
 convert_images_for_learn.py
 video.py
+test.py
+train.py
 
 #files extensions
 *.env

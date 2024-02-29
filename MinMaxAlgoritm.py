@@ -9,6 +9,7 @@ from ImgExtract import ImageExtractor
 import os
 import json
 from report import WorldReporter
+import time
 
 
 def create_logger():
@@ -50,7 +51,7 @@ def intersection_area(rect1: list, rect2: list) -> int:
 
 
 def remove_rectangles_based_on_intersections_and_area(rectangles: list) -> list:
-    coef_intersection = 0.7
+    coef_intersection = 0.6
     n = len(rectangles)
     areas = [area_of_rectangle(rect) for rect in rectangles]
     to_remove = set()
@@ -96,6 +97,8 @@ logg.info("All env variables and models was loaded successfully")
 # status 1 - person on image
 # status 2 - person leave, but boxes not recount. Recounting boxes
 status = 2
+# make sure that person leave
+accept = 0
 
 while True:
     logg.info(f"Try to load image")
@@ -107,9 +110,13 @@ while True:
     if len(predict_person.boxes.xyxy) > 0 and status == 0:
         status = 1
         logg.info(f"Person was founded")
+        accept = 0
     elif status == 1:
-        status = 2
-        logg.info(f"Person leave")
+        accept += 1
+        if accept >= 5:
+            status = 2
+            logg.info(f"Person leave")
+            accept = 0
 
     if status == 2:
         logg.info("Start recounting boxes")
@@ -118,10 +125,11 @@ while True:
         for zone in zones:
             # get four coordinates of zone with boxes
             values = zone["coords"][0]
+            image_copy = image.copy()
             x1_zone, y1_zone, x2_zone, y2_zone = int(values["x1"]), int(values["y1"]), int(values["x2"]), int(
                 values["y2"])
 
-            img = image[y1_zone:y2_zone, x1_zone:x2_zone]
+            img = image_copy[y1_zone:y2_zone, x1_zone:x2_zone]
 
             # make prediction
             results = model_box(img, conf=0.55)
@@ -134,8 +142,9 @@ while True:
             boxes = remove_rectangles_based_on_intersections_and_area(boxes)
 
             # draw zone on main image
-            image = cv2.rectangle(image, (x1_zone, y1_zone), (x2_zone, y2_zone), (255, 0, 255), 2)
-            img = cv2.putText(image, zone['itemName'], (int(x1_zone), int(y1_zone) - 15),
+            image_copy_color = cv2.cvtColor(image_copy, cv2.COLOR_BGR2RGB)
+            image_with_zone = cv2.rectangle(image_copy_color, (x1_zone, y1_zone), (x2_zone, y2_zone), (255, 0, 255), 2)
+            img = cv2.putText(image_with_zone, zone['itemName'], (int(x1_zone), int(y1_zone) - 5),
                               cv2.FONT_HERSHEY_COMPLEX,
                               0.5, (255, 0, 255), 1)
 
@@ -143,9 +152,9 @@ while True:
             for i, box in enumerate(boxes):
                 x1, y1, x2, y2 = list(box)
                 label = 0
-                img = cv2.rectangle(img, (int(x1 + x1_zone), int(y1 + y1_zone)), (int(x2 + x2_zone), int(y2 + y2_zone)),
+                img = cv2.rectangle(img, (int(x1 + x1_zone), int(y1 + y1_zone)), (int(x2 + x1_zone), int(y2 + y1_zone)),
                                     (0, 255, 0), 2)
-                img = cv2.putText(img, str(prob[i].conf[0].item())[:4], (int(x1) + 4, int(y1) + 15),
+                img = cv2.putText(img, str(prob[i].conf[0].item())[:4], (int(x1 + x1_zone) + 4, int(y1 + y1_zone) + 15),
                                   cv2.FONT_HERSHEY_SIMPLEX,
                                   0.5, (255, 255, 255), 1)
             logg.info(f"In zone {zone['itemName']} was founded {len(boxes)} boxes")
@@ -160,3 +169,4 @@ while True:
         report.send_report(str(start_track), str(end_track), camera_ip, final_report)
         logg.info(f"Boxes was recounted")
         status = 0
+    time.sleep(1)
