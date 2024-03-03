@@ -21,6 +21,7 @@ train.py
 *.jpeg
 *.json
 !box_detection_model.pt
+!box_detection_model_2.pt
 !person_detection_model.pt
 
 # Byte-compiled / optimized / DLL files

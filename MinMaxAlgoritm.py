@@ -1,6 +1,9 @@
 import cv2
 import datetime
 import uuid
+
+import numpy as np
+
 from ObjectDetectionModel import YOLOv8ObjDetectionModel
 import logging
 import colorlog
@@ -51,7 +54,7 @@ def intersection_area(rect1: list, rect2: list) -> int:
 
 
 def remove_rectangles_based_on_intersections_and_area(rectangles: list) -> list:
-    coef_intersection = 0.6
+    coef_intersection = 0.51
     n = len(rectangles)
     areas = [area_of_rectangle(rect) for rect in rectangles]
     to_remove = set()
@@ -89,6 +92,7 @@ folder = os.environ.get("folder")
 # init classes
 report = WorldReporter(server_url, folder, logg)
 model_box = YOLOv8ObjDetectionModel(model_path='models/box_detection_model.pt')
+model_box_2 = YOLOv8ObjDetectionModel(model_path='models/box_detection_model_2.pt')
 model_person = YOLOv8ObjDetectionModel(model_path='models/person_detection_model.pt', classes=[0])
 image_extr = ImageExtractor(camera_url, logg)
 logg.info("All env variables and models was loaded successfully")
@@ -113,6 +117,7 @@ while True:
         accept = 0
     elif status == 1:
         accept += 1
+        logg.info(f"Person isn't in image already {accept} seconds")
         if accept >= 5:
             status = 2
             logg.info(f"Person leave")
@@ -133,10 +138,12 @@ while True:
 
             # make prediction
             results = model_box(img, conf=0.55)
+            result_2 = model_box(img, conf=0.55)
 
             # get data
-            boxes = results.boxes.xyxy
-            prob = results.boxes
+            boxes_1 = results.boxes.xyxy.cpu()
+            boxes_2 = result_2.boxes.xyxy.cpu()
+            boxes = np.vstack((boxes_1, boxes_2))
 
             # remove rectangles, which are on other rectangles
             boxes = remove_rectangles_based_on_intersections_and_area(boxes)
@@ -154,7 +161,7 @@ while True:
                 label = 0
                 img = cv2.rectangle(img, (int(x1 + x1_zone), int(y1 + y1_zone)), (int(x2 + x1_zone), int(y2 + y1_zone)),
                                     (0, 255, 0), 2)
-                img = cv2.putText(img, str(prob[i].conf[0].item())[:4], (int(x1 + x1_zone) + 4, int(y1 + y1_zone) + 15),
+                img = cv2.putText(img, str([i]), (int(x1 + x1_zone) + 4, int(y1 + y1_zone) + 15),
                                   cv2.FONT_HERSHEY_SIMPLEX,
                                   0.5, (255, 255, 255), 1)
             logg.info(f"In zone {zone['itemName']} was founded {len(boxes)} boxes")
