@@ -5,4 +5,8 @@
 *.jpg
 test.py
 train.py
+datasets/
+runs/
+yolov8n.pt
+yolov8x.pt
 __pycache__

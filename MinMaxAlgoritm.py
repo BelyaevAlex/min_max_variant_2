@@ -64,13 +64,53 @@ def remove_rectangles_based_on_intersections_and_area(rectangles: list) -> list:
             intersection = intersection_area(rectangles[i], rectangles[j])
             min_area = min(areas[i], areas[j])
             if intersection > coef_intersection * min_area:
-                if areas[i] > areas[j]:
+                if areas[i] <= areas[j]:
                     to_remove.add(j)
                 else:
                     to_remove.add(i)
 
     filtered_rectangles = [rect for i, rect in enumerate(rectangles) if i not in to_remove]
     return filtered_rectangles
+
+
+def find_corners(points):
+    sorted_by_y = points[np.argsort(points[:, 1])]
+
+    bottom_points = sorted_by_y[:2, :]
+    top_points = sorted_by_y[2:, :]
+
+    bottom_points = bottom_points[np.argsort(bottom_points[:, 0])]
+    top_points = top_points[np.argsort(top_points[:, 0])]
+
+    corners = np.array([bottom_points[0], bottom_points[1], top_points[1], top_points[0]])
+
+    return corners
+
+
+def transform_quadrilateral_to_rectangle(image, src_points):
+    src_points = find_corners(src_points)
+    width_a = np.sqrt(((src_points[2][0] - src_points[3][0]) ** 2) + ((src_points[2][1] - src_points[3][1]) ** 2))
+    width_b = np.sqrt(((src_points[1][0] - src_points[0][0]) ** 2) + ((src_points[1][1] - src_points[0][1]) ** 2))
+    width = max(int(width_a), int(width_b))
+
+    height_a = np.sqrt(((src_points[1][0] - src_points[2][0]) ** 2) + ((src_points[1][1] - src_points[2][1]) ** 2))
+    height_b = np.sqrt(((src_points[0][0] - src_points[3][0]) ** 2) + ((src_points[0][1] - src_points[3][1]) ** 2))
+    height = max(int(height_a), int(height_b))
+
+    dst_points = np.array([
+        [0, 0],
+        [width - 1, 0],
+        [width - 1, height - 1],
+        [0, height - 1]
+    ], dtype='float32')
+
+    matrix = cv2.getPerspectiveTransform(src_points.astype('float32'), dst_points)
+
+    transformed_image = cv2.warpPerspective(image, matrix, (width, height))
+
+    M_inv = cv2.getPerspectiveTransform(dst_points, src_points.astype('float32'))
+
+    return transformed_image, M_inv
 
 
 logg = create_logger()
@@ -107,9 +147,10 @@ accept = 0
 while True:
     logg.info(f"Try to load image")
     image = image_extr.get_image()
+    image_color_changed = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     logg.info(f"Image was loaded successfully")
 
-    predict_person = model_person(image, conf=0.5)
+    predict_person = model_person(image_color_changed, conf=0.25)
 
     if len(predict_person.boxes.xyxy) > 0 and status == 0:
         status = 1
@@ -130,15 +171,17 @@ while True:
         for zone in zones:
             # get four coordinates of zone with boxes
             values = zone["coords"][0]
-            image_copy = image.copy()
-            x1_zone, y1_zone, x2_zone, y2_zone = int(values["x1"]), int(values["y1"]), int(values["x2"]), int(
-                values["y2"])
+            image_copy = image_color_changed.copy()
+            x1_zone, y1_zone, x2_zone, y2_zone, x3_zone, y3_zone, x4_zone, y4_zone = int(values["x1"]), int(
+                values["y1"]), int(values["x2"]), int(
+                values["y2"]), int(values["x3"]), int(values["y3"]), int(values["x4"]), int(values["y4"])
 
-            img = image_copy[y1_zone:y2_zone, x1_zone:x2_zone]
+            img, M_inv = transform_quadrilateral_to_rectangle(image_copy, [(x1_zone, y1_zone), (x2_zone, y2_zone),
+                                                                           (x3_zone, y3_zone), (x4_zone, y4_zone)])
 
             # make prediction
-            results = model_box(img, conf=0.55)
-            result_2 = model_box(img, conf=0.55)
+            results = model_box(img, conf=0.5)
+            result_2 = model_box_2(img, conf=0.4)
 
             # get data
             boxes_1 = results.boxes.xyxy.cpu()
@@ -149,8 +192,7 @@ while True:
             boxes = remove_rectangles_based_on_intersections_and_area(boxes)
 
             # draw zone on main image
-            image_copy_color = cv2.cvtColor(image_copy, cv2.COLOR_BGR2RGB)
-            image_with_zone = cv2.rectangle(image_copy_color, (x1_zone, y1_zone), (x2_zone, y2_zone), (255, 0, 255), 2)
+            image_with_zone = cv2.rectangle(image_copy, (x1_zone, y1_zone), (x2_zone, y2_zone), (255, 0, 255), 2)
             img = cv2.putText(image_with_zone, zone['itemName'], (int(x1_zone), int(y1_zone) - 5),
                               cv2.FONT_HERSHEY_COMPLEX,
                               0.5, (255, 0, 255), 1)
@@ -159,9 +201,15 @@ while True:
             for i, box in enumerate(boxes):
                 x1, y1, x2, y2 = list(box)
                 label = 0
-                img = cv2.rectangle(img, (int(x1 + x1_zone), int(y1 + y1_zone)), (int(x2 + x1_zone), int(y2 + y1_zone)),
+                points_1 = np.array([[[int(x1), int(y1)]]], dtype='float32')
+                point_on_src_1 = cv2.perspectiveTransform(points_1, M_inv)
+                points_2 = np.array([[[int(x2), int(y2)]]], dtype='float32')
+                point_on_src_2 = cv2.perspectiveTransform(points_2, M_inv)
+                img = cv2.rectangle(image_copy, (int(point_on_src_1[0][0][0]), int(point_on_src_1[0][0][1])),
+                                    (int(point_on_src_2[0][0][0]), int(point_on_src_2[0][0][1])),
                                     (0, 255, 0), 2)
-                img = cv2.putText(img, str([i]), (int(x1 + x1_zone) + 4, int(y1 + y1_zone) + 15),
+                img = cv2.putText(img, str(i + 1),
+                                  (int(point_on_src_1[0][0][0]) + 4, int(point_on_src_1[0][0][1]) + 15),
                                   cv2.FONT_HERSHEY_SIMPLEX,
                                   0.5, (255, 255, 255), 1)
             logg.info(f"In zone {zone['itemName']} was founded {len(boxes)} boxes")
