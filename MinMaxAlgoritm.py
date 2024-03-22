@@ -150,7 +150,7 @@ while True:
     image_color_changed = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     logg.info(f"Image was loaded successfully")
 
-    predict_person = model_person(image_color_changed, conf=0.25)
+    predict_person = model_person(image_color_changed, conf=0.1)
 
     if len(predict_person.boxes.xyxy) > 0 and status == 0:
         status = 1
@@ -196,6 +196,12 @@ while True:
             img = cv2.putText(image_with_zone, zone['itemName'], (int(x1_zone), int(y1_zone) - 5),
                               cv2.FONT_HERSHEY_COMPLEX,
                               0.5, (255, 0, 255), 1)
+
+            final_boxes = []
+            for box in boxes:
+                x1, y1, x2, y2 = list(box)
+                if x2 - x1 > 10 and y2 - y1 > 10:
+                    final_boxes.append(box)
 
             # draw rectangles
             for i, box in enumerate(boxes):
