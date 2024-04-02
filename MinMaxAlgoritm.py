@@ -13,6 +13,7 @@ import os
 import json
 from report import WorldReporter
 import time
+from ImgExtractIp import ImageCapture
 
 
 def create_logger():
@@ -53,7 +54,7 @@ def intersection_area(rect1: list, rect2: list) -> int:
     return (x_right - x_left) * (y_bottom - y_top)
 
 
-def remove_rectangles_based_on_intersections_and_area(rectangles: list) -> list:
+def remove_rectangles_based_on_intersections_and_area(rectangles) -> list:
     coef_intersection = 0.51
     n = len(rectangles)
     areas = [area_of_rectangle(rect) for rect in rectangles]
@@ -128,13 +129,20 @@ server_url = os.environ.get("server_url")
 camera_url = os.environ.get("camera_url")
 camera_ip = os.environ.get("camera_ip")
 folder = os.environ.get("folder")
+username = os.environ.get("username")
+password = os.environ.get("password")
+logg.info(
+    f"ENV variables\n server_url: {server_url}, camera_url: {camera_url}, camera_ip: {camera_ip}, folder: {folder}, username: {username}, password: {password}")
+image_extr = ImageExtractor(
+    camera_ip,
+    logg=logg
+)
 
 # init classes
 report = WorldReporter(server_url, folder, logg)
 model_box = YOLOv8ObjDetectionModel(model_path='models/box_detection_model.pt')
 model_box_2 = YOLOv8ObjDetectionModel(model_path='models/box_detection_model_2.pt')
 model_person = YOLOv8ObjDetectionModel(model_path='models/person_detection_model.pt', classes=[0])
-image_extr = ImageExtractor(camera_url, logg)
 logg.info("All env variables and models was loaded successfully")
 
 # status 0 - boxes already recounted, check for person
@@ -147,6 +155,8 @@ accept = 0
 while True:
     logg.info(f"Try to load image")
     image = image_extr.get_image()
+    if image is None:
+        continue
     image_color_changed = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     logg.info(f"Image was loaded successfully")
 
@@ -172,12 +182,18 @@ while True:
             # get four coordinates of zone with boxes
             values = zone["coords"][0]
             image_copy = image_color_changed.copy()
-            x1_zone, y1_zone, x2_zone, y2_zone, x3_zone, y3_zone, x4_zone, y4_zone = int(values["x1"]), int(
-                values["y1"]), int(values["x2"]), int(
-                values["y2"]), int(values["x3"]), int(values["y3"]), int(values["x4"]), int(values["y4"])
-
-            img, M_inv = transform_quadrilateral_to_rectangle(image_copy, [(x1_zone, y1_zone), (x2_zone, y2_zone),
-                                                                           (x3_zone, y3_zone), (x4_zone, y4_zone)])
+            try:
+                x1_zone, y1_zone, x2_zone, y2_zone, x3_zone, y3_zone, x4_zone, y4_zone = int(values["x1"]), int(
+                    values["y1"]), int(values["x2"]), int(
+                    values["y2"]), int(values["x3"]), int(values["y3"]), int(values["x4"]), int(values["y4"])
+                coords_type = 4
+                img, M_inv = transform_quadrilateral_to_rectangle(image_copy, [(x1_zone, y1_zone), (x2_zone, y2_zone),
+                                                                               (x3_zone, y3_zone), (x4_zone, y4_zone)])
+            except:
+                coords_type = 2
+                x1_zone, y1_zone, x2_zone, y2_zone = int(values["x1"]), int(
+                    values["y1"]), int(values["x2"]), int(values["y2"])
+                img = image_copy[y1_zone:y2_zone, x1_zone:x2_zone]
 
             # make prediction
             results = model_box(img, conf=0.5)
@@ -202,22 +218,39 @@ while True:
                 x1, y1, x2, y2 = list(box)
                 if x2 - x1 > 10 and y2 - y1 > 10:
                     final_boxes.append(box)
-
-            # draw rectangles
-            for i, box in enumerate(boxes):
-                x1, y1, x2, y2 = list(box)
-                label = 0
-                points_1 = np.array([[[int(x1), int(y1)]]], dtype='float32')
-                point_on_src_1 = cv2.perspectiveTransform(points_1, M_inv)
-                points_2 = np.array([[[int(x2), int(y2)]]], dtype='float32')
-                point_on_src_2 = cv2.perspectiveTransform(points_2, M_inv)
-                img = cv2.rectangle(image_copy, (int(point_on_src_1[0][0][0]), int(point_on_src_1[0][0][1])),
-                                    (int(point_on_src_2[0][0][0]), int(point_on_src_2[0][0][1])),
-                                    (0, 255, 0), 2)
-                img = cv2.putText(img, str(i + 1),
-                                  (int(point_on_src_1[0][0][0]) + 4, int(point_on_src_1[0][0][1]) + 15),
-                                  cv2.FONT_HERSHEY_SIMPLEX,
-                                  0.5, (255, 255, 255), 1)
+            if coords_type == 4:
+                # draw rectangles
+                for i, box in enumerate(boxes):
+                    x1, y1, x2, y2 = list(box)
+                    label = 0
+                    points_1 = np.array([[[int(x1), int(y1)]]], dtype='float32')
+                    point_on_src_1 = cv2.perspectiveTransform(points_1, M_inv)
+                    points_2 = np.array([[[int(x2), int(y2)]]], dtype='float32')
+                    point_on_src_2 = cv2.perspectiveTransform(points_2, M_inv)
+                    img = cv2.rectangle(img, (
+                        int(point_on_src_1[0][0][0] + x1_zone), int(point_on_src_1[0][0][1] + y1_zone)),
+                                        (
+                                            int(point_on_src_2[0][0][0] + x1_zone),
+                                            int(point_on_src_2[0][0][1] + y1_zone)),
+                                        (0, 255, 0), 2)
+                    img = cv2.putText(img, str(i + 1),
+                                      (int(point_on_src_1[0][0][0] + x1_zone) + 4,
+                                       int(point_on_src_1[0][0][1] + y1_zone) + 15),
+                                      cv2.FONT_HERSHEY_SIMPLEX,
+                                      0.5, (255, 255, 255), 1)
+            else:
+                for i, box in enumerate(boxes):
+                    x1, y1, x2, y2 = list(box)
+                    label = 0
+                    img = cv2.rectangle(img,
+                                        (int(x1 + x1_zone), int(y1 + y1_zone)),
+                                        (int(x2 + x1_zone), int(y2 + y1_zone)),
+                                        (0, 255, 0), 2)
+                    img = cv2.putText(img, str(i + 1),
+                                      (int(x1 + x1_zone) + 4,
+                                       int(y1 + y1_zone) + 15),
+                                      cv2.FONT_HERSHEY_SIMPLEX,
+                                      0.5, (255, 255, 255), 1)
             logg.info(f"In zone {zone['itemName']} was founded {len(boxes)} boxes")
 
             name_file = uuid.uuid4()

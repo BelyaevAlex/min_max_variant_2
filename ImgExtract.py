@@ -5,8 +5,8 @@ import cv2
 
 
 class ImageExtractor:
-    def __init__(self, url: str, logg) -> None:
-        self.url = url
+    def __init__(self, camera_ip: str, logg) -> None:
+        self.camera_ip = camera_ip
         self.logg = logg
 
     def get_image(self) -> np.array:
@@ -20,9 +20,9 @@ class ImageExtractor:
         return image
 
     def _extract_and_convert_image(self) -> np.array:
-        response = requests.get(self.url, stream=True)
+        response = requests.get(self.camera_ip)
         while response.status_code != 200:
-            response = requests.get(self.url, stream=True)
+            response = requests.get(self.camera_ip)
             self.logg.warning(f"Response to extract image has got {response.status_code} status code")
         img_array = np.frombuffer(response.content, np.uint8)
         image = cv2.cvtColor(cv2.imdecode(img_array, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
